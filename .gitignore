@@ -5,3 +5,7 @@
 .txt
 .csv
 .html
+*.txt
+*.csv
+*.html
+*.Rproj
