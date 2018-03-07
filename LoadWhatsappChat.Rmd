@@ -1,0 +1,96 @@
+---
+title: "Analyze a Whatsapp chat"
+author: "Frederik Holmelund Kjaerskov"
+date: "7 March 2018"
+output:
+  html_document:
+    theme: null
+  html_notebook:
+    theme: paper
+    toc: yes
+editor_options:
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Why import a Whatsapp chat? - because we can!
+
+Wanting to do some more word analysis I thought of areas of interest. Visting Google I quickly discovered that the Brönte sisters and Hemingway are popular subjects. I wanted something else and suddenly thought of my year old Whatapp chat with my girlfriend. While the Whatapp chat can easily be exported as a text file from your phone (see e.g. [Whatsapp.com FAQ](https://faq.whatsapp.com/en/wp/22548236)) you still need to do some regualar expression housekeeping but the challenge was accepted. Therefore this post is about analyzing a Whatsapp chat. 
+
+## Loading the Whatsapp chat into R
+
+Following the [instructions](https://faq.whatsapp.com/en/wp/22548236), the Whatsapp chat was emailed as a text file to my email adress. To see the contents I opened the file in my spreadsheet application of choice Google Sheets but Excel should work fine. It was fairly easy to import the text file and I ended up with a sheet with rows each containing time, date, sender and text messages. This I saved as a CSV file and read into R. 
+
+```{r readfile, warning=FALSE}
+#Read file
+cFile <- read.csv("Whatsappchat.csv",   header = FALSE, sep = ";",
+                na.strings="", stringsAsFactors = FALSE, fill=TRUE, encoding = "UTF-8")
+str(cFile)
+```
+
+See that the CSV file is read into a data frame consisting of thousands of observations of one variable. This is what we need to *regular express* our way out of. From rows like this 
+`09/06/2016, 00.20 - Frederik: Her er noget med nogle andre indians` 
+we can construct a data frame like the one below containing line numbers, text message (and only text messages), message sender, date and timestamp information. The name `dfRaw` signifies that it's prior to any word preprocessing. 
+
+```{r warning=FALSE, message=FALSE}
+# Load libraries
+library("dplyr") # Tidyverse data manipulation
+
+#Construct data frame
+dfRaw <- data_frame(
+             line = 1:nrow(cFile),
+             Text = as.character(gsub("^.*\\w{1}[:][[:blank:]](.*$)","\\1",cFile$V1)),
+             Year = as.character(gsub("^.*((\\d+){4}?).*","\\1",cFile$V1)),
+             Month = as.character(gsub("^.*\\d+{2}[/](\\d+{2})[/]\\d+{4}.*","\\1",cFile$V1)),
+             Date = as.character(gsub("^(\\d+{2}[/]\\d+{2}).*","\\1",cFile$V1)),
+             Time = as.numeric(gsub("^.*((\\d+){2}[.]\\d+).*$","\\1",cFile$V1)),
+             Sender = gsub("^.*[-][[:blank:]]((\\w+){2}).*$","\\1",cFile$V1),
+             Timestamp = gsub("(^.*)[[:blank:]][-].*$","\\1",cFile$V1)
+             )
+```
+
+Next we delimit the time stamps into a more favorable format using the `lubridate` package. For more information please visit [Lubridate package on CRAN](https://cran.r-project.org/web/packages/lubridate/vignettes/lubridate.html).
+
+```{r warning=FALSE, message=FALSE}
+# Load library
+library("lubridate") #Date and time conversion
+
+# Replace delimiters
+dfRaw$Timestamp <- gsub("\\/","-", dfRaw$Timestamp)
+dfRaw$Timestamp <- gsub(",","", dfRaw$Timestamp)
+dfRaw$Timestamp <- gsub("\\.",":", dfRaw$Timestamp)
+
+#Convert timestamps to date-time object
+dfRaw$Timestamp <- dmy_hm(dfRaw$Timestamp)
+```
+
+but before we can consider the data frame tidy we need to do something about all the instances where I (Frederik) or my girlfriend (Hlin) have written multiple messages within the same time stamp (HH:MM) and escaped each with a new line. These messages figure without anything else but the text messages itself. To fix it, we simply take the previous rows meta data every time we encounter an row with no sender. The below loop does just that. 
+
+```{r}
+#Identify problem rows and replace these rows with data from previous row
+problemIdx <- !(dfRaw$Sender %in% c("Frederik", "Hlín"))
+
+for (i in which(problemIdx==TRUE, arr.ind=TRUE)) {
+  dfRaw$Year[i] <- dfRaw$Year[i-1]
+  dfRaw$Month[i] <- dfRaw$Month[i-1]
+  dfRaw$Time[i] <- dfRaw$Time[i-1]
+  dfRaw$Sender[i] <- dfRaw$Sender[i-1]
+  dfRaw$Date[i] <- dfRaw$Date[i-1]
+  dfRaw$Timestamp[i] <- dfRaw$Timestamp[i-1]
+  }
+```
+
+And now we ended up with a data frame that is a bit more elaborated than the CSV file initially loaded. 
+
+```{r}
+str(dfRaw)
+```
+
+We will use this raw text data frame to continue our Whatsapp analysis in a later post. 
+You can find this file on Github
+
+* 
+
